@@ -69,11 +69,15 @@
   .hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;
     font-size:12px;color:rgba(255,255,255,.45);z-index:3;}
 
-  /* Whip line */
-  .whip{position:fixed;height:5px;transform-origin:left center;z-index:8;pointer-events:none;
-    background:linear-gradient(90deg,#fff,var(--gold),var(--accent));
-    border-radius:5px;box-shadow:0 0 14px var(--gold);animation:whipFade .22s forwards;}
-  @keyframes whipFade{0%{opacity:1;filter:brightness(2)}100%{opacity:0;filter:brightness(1)}}
+  /* Whip canvas overlay */
+  #whipCanvas{position:fixed;inset:0;z-index:8;pointer-events:none;}
+
+  /* crack flash at impact */
+  .crackFlash{position:fixed;z-index:7;pointer-events:none;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.95),rgba(255,217,61,.5) 40%,transparent 70%);
+    transform:translate(-50%,-50%) scale(.2);animation:crackF .25s forwards;}
+  @keyframes crackF{0%{opacity:1;transform:translate(-50%,-50%) scale(.2)}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(1.4)}}
 
   /* Impact */
   .impact{position:fixed;z-index:9;pointer-events:none;font-family:'Bungee';
@@ -117,6 +121,7 @@
     </div>
     <div class="hint">Tap / klik AI untuk memecut! 🐍💥</div>
   </div>
+  <canvas id="whipCanvas"></canvas>
 
 <script>
 const arena = document.getElementById('arena');
@@ -135,21 +140,150 @@ const phrases = [
 
 function rand(a,b){return Math.random()*(b-a)+a;}
 
-function whipAt(x,y){
-  // origin: top-left corner of screen
-  const ox = rand(0,80), oy = 0;
-  const dx = x-ox, dy = y-oy;
-  const len = Math.hypot(dx,dy);
-  const ang = Math.atan2(dy,dx)*180/Math.PI;
-  const whip = document.createElement('div');
-  whip.className='whip';
-  whip.style.left=ox+'px';
-  whip.style.top=oy+'px';
-  whip.style.width=len+'px';
-  whip.style.transform=`rotate(${ang}deg)`;
-  document.body.appendChild(whip);
-  setTimeout(()=>whip.remove(),230);
+/* ---------- Realistic whip on canvas ---------- */
+const canvas=document.getElementById('whipCanvas');
+const ctx=canvas.getContext('2d');
+function resize(){canvas.width=innerWidth*devicePixelRatio;canvas.height=innerHeight*devicePixelRatio;
+  canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);}
+resize();addEventListener('resize',resize);
+
+const whips=[];
+function spawnWhip(tx,ty){
+  // handle anchored near bottom, alternating sides for variety
+  const fromLeft=Math.random()<0.5;
+  const ox=fromLeft?rand(20,90):innerWidth-rand(20,90);
+  const oy=innerHeight-rand(-10,30);
+  whips.push({ox,oy,tx,ty,t:0,fromLeft,
+    overshoot:rand(28,55), dur:230, born:performance.now()});
 }
+
+// Catmull-Rom-ish smooth bezier through points
+function drawCurve(pts,width,style){
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x,pts[0].y);
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i],p1=pts[i+1];
+    const mx=(p0.x+p1.x)/2,my=(p0.y+p1.y)/2;
+    ctx.quadraticCurveTo(p0.x,p0.y,mx,my);
+  }
+  const last=pts[pts.length-1];
+  ctx.lineTo(last.x,last.y);
+  ctx.lineWidth=width;ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle=style;ctx.stroke();
+}
+
+// short wooden handle: a small tapered grip pointing back from the whip base
+function drawHandle(base, next, fade){
+  // direction from base toward the whip (so handle extends opposite, "into hand")
+  const dx=next.x-base.x, dy=next.y-base.y;
+  const len=Math.hypot(dx,dy)||1;
+  const nx=dx/len, ny=dy/len;
+  const HL=85; // handle length
+  // handle goes from base outward, away from the whip body
+  const hx=base.x - nx*HL, hy=base.y - ny*HL;
+  ctx.save();
+  ctx.lineCap='round';
+  // subtle dark outline for contrast against any background
+  ctx.beginPath();ctx.moveTo(base.x,base.y);ctx.lineTo(hx,hy);
+  ctx.lineWidth=22*fade;ctx.strokeStyle='rgba(20,12,6,'+0.9*fade+')';ctx.stroke();
+  // wood base (dark)
+  ctx.beginPath();ctx.moveTo(base.x,base.y);ctx.lineTo(hx,hy);
+  ctx.lineWidth=18*fade;ctx.strokeStyle='rgba(92,56,26,'+fade+')';ctx.stroke();
+  // wood mid
+  ctx.beginPath();ctx.moveTo(base.x,base.y);ctx.lineTo(hx,hy);
+  ctx.lineWidth=12*fade;ctx.strokeStyle='rgba(150,98,48,'+fade+')';ctx.stroke();
+  // wood highlight streak
+  ctx.beginPath();ctx.moveTo(base.x,base.y);ctx.lineTo(hx,hy);
+  ctx.lineWidth=4*fade;ctx.strokeStyle='rgba(214,162,96,'+fade+')';ctx.stroke();
+  // brass collar where leather meets wood
+  ctx.beginPath();ctx.arc(base.x,base.y,11*fade,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,205,80,'+fade+')';ctx.fill();
+  ctx.lineWidth=2*fade;ctx.strokeStyle='rgba(150,110,30,'+fade+')';ctx.stroke();
+  // rounded pommel cap at the end
+  ctx.beginPath();ctx.arc(hx,hy,11*fade,0,Math.PI*2);
+  ctx.fillStyle='rgba(110,70,36,'+fade+')';ctx.fill();
+  ctx.lineWidth=3*fade;ctx.strokeStyle='rgba(40,24,12,'+fade+')';ctx.stroke();
+  // pommel highlight
+  ctx.beginPath();ctx.arc(hx-nx*-2-3,hy-ny*-2-3,3.5*fade,0,Math.PI*2);
+  ctx.fillStyle='rgba(214,162,96,'+0.9*fade+')';ctx.fill();
+  ctx.restore();
+}
+
+function renderWhips(now){
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  for(let i=whips.length-1;i>=0;i--){
+    const w=whips[i];
+    const p=(now-w.born)/w.dur; // 0..1
+    if(p>=1){whips.splice(i,1);continue;}
+
+    // ease: fast forward sting then snap back
+    // tip travels out (0->0.45) then cracks/recoils
+    const forward=Math.min(p/0.45,1);
+    const recoil=p>0.45?(p-0.45)/0.55:0;
+    const ease=t=>1-Math.pow(1-t,3);
+    const fwd=ease(forward);
+
+    // tip position: from origin toward target, overshooting then snapping back
+    const baseX=w.ox+(w.tx-w.ox)*fwd;
+    const baseY=w.oy+(w.ty-w.oy)*fwd;
+    // direction
+    const dx=w.tx-w.ox, dy=w.ty-w.oy, len=Math.hypot(dx,dy)||1;
+    const nx=dx/len, ny=dy/len;
+    // overshoot adds beyond target at the strike, then recoil pulls tip back
+    const over=w.overshoot*Math.sin(forward*Math.PI)*(1-recoil);
+    const tipX=baseX+nx*over - nx*(w.overshoot*1.2)*recoil;
+    const tipY=baseY+ny*over - ny*(w.overshoot*1.2)*recoil;
+
+    // build whip body as points with whip-like curl (perpendicular wave that travels)
+    const segs=18;
+    const px=-ny, py=nx; // perpendicular
+    const pts=[];
+    const wavePhase=forward*Math.PI*1.5;
+    for(let s=0;s<=segs;s++){
+      const f=s/segs;
+      // straighten as it extends
+      const slack=(1-fwd)*0.0 + 0.0;
+      let x=w.ox+(tipX-w.ox)*f;
+      let y=w.oy+(tipY-w.oy)*f;
+      // sine curl, larger near middle, fades at tip, travels along
+      const amp=Math.sin(f*Math.PI)*(34*(1-fwd*0.5))*Math.cos(wavePhase - f*4);
+      x+=px*amp; y+=py*amp;
+      pts.push({x,y});
+    }
+
+    const fade=1-recoil*0.6;
+    // outer glow
+    ctx.shadowColor='rgba(255,217,61,'+0.6*fade+')';ctx.shadowBlur=14;
+    // leather body in 3 layers for a tapered, 3D look
+    drawCurve(pts,7*fade,'rgba(60,40,22,'+fade+')');      // dark leather base
+    drawCurve(pts,4.2*fade,'rgba(150,110,60,'+fade+')');  // mid tone
+    drawCurve(pts,1.8*fade,'rgba(255,235,180,'+fade+')'); // highlight
+    ctx.shadowBlur=0;
+
+    // small wooden handle at the base, angled along the whip's start direction
+    drawHandle(pts[0], pts[1], fade);
+
+    // sonic-crack flash at tip when it reaches near target
+    if(!w.cracked && forward>=0.99){
+      w.cracked=true;
+      crackFlash(w.tx,w.ty);
+    }
+  }
+  if(whips.length) requestAnimationFrame(renderWhips);
+}
+
+function startLoop(){requestAnimationFrame(renderWhips);}
+
+function crackFlash(x,y){
+  const el=document.createElement('div');
+  el.className='crackFlash';
+  el.style.left=x+'px';el.style.top=y+'px';
+  el.style.width='90px';el.style.height='90px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),260);
+}
+
 
 function impactAt(x,y){
   const el=document.createElement('div');
@@ -184,11 +318,16 @@ function bubbleAt(x,y){
 
 function hit(x,y){
   count++;countEl.textContent=count;
-  whipAt(x,y);
-  impactAt(x,y);
-  const r=monster.getBoundingClientRect();
-  bubbleAt(r.left+r.width/2,r.top+r.height*0.25);
-  wrap.classList.remove('hit');void wrap.offsetWidth;wrap.classList.add('hit');
+  const wasEmpty=whips.length===0;
+  spawnWhip(x,y);
+  if(wasEmpty) startLoop();
+  // impact/spark slightly delayed to sync with whip tip arrival
+  setTimeout(()=>{
+    impactAt(x,y);
+    const r=monster.getBoundingClientRect();
+    bubbleAt(r.left+r.width/2,r.top+r.height*0.25);
+    wrap.classList.remove('hit');void wrap.offsetWidth;wrap.classList.add('hit');
+  },95);
 }
 
 arena.addEventListener('click',e=>hit(e.clientX,e.clientY));
