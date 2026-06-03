@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pecut Monster!</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Space+Mono:wght@400;700&display=swap');
+
+  :root{
+    --bg1:#1a0b2e; --bg2:#3d1561; --accent:#ff2e63; --accent2:#08d9d6; --gold:#ffd93d;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;font-family:'Space Mono',monospace;}
+  body{
+    background:radial-gradient(circle at 50% 20%,var(--bg2),var(--bg1) 70%);
+    color:#fff;user-select:none;
+    display:flex;flex-direction:column;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px);
+    background-size:24px 24px;z-index:0;
+  }
+
+  /* HUD */
+  .hud{
+    position:relative;z-index:5;display:flex;justify-content:space-between;
+    align-items:center;padding:14px 18px;flex-wrap:wrap;gap:10px;
+  }
+  .title{font-family:'Bungee';font-size:clamp(20px,5vw,34px);
+    color:var(--accent);text-shadow:0 0 12px var(--accent),3px 3px 0 #000;letter-spacing:1px;}
+  .counter{
+    font-family:'Bungee';font-size:clamp(18px,4vw,26px);
+    background:#000;border:3px solid var(--gold);border-radius:14px;
+    padding:6px 18px;color:var(--gold);text-shadow:0 0 8px var(--gold);
+    box-shadow:0 0 18px rgba(255,217,61,.4);
+  }
+  .controls{display:flex;gap:10px;align-items:center;width:100%;justify-content:center;flex-wrap:wrap;}
+  .btn{
+    font-family:'Space Mono';font-weight:700;font-size:13px;cursor:pointer;
+    background:var(--accent2);color:#001;border:none;border-radius:10px;
+    padding:9px 16px;box-shadow:0 4px 0 #066b6e;transition:transform .08s;
+  }
+  .btn:active{transform:translateY(4px);box-shadow:0 0 0 #066b6e;}
+  .btn.reset{background:var(--accent);box-shadow:0 4px 0 #8a0f33;}
+  input[type=file]{display:none;}
+
+  /* Arena */
+  .arena{
+    flex:1;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;
+    cursor:crosshair;overflow:hidden;
+  }
+  .monster-wrap{position:relative;transition:transform .08s;}
+  #monster{
+    width:min(60vw,320px);height:min(60vw,320px);object-fit:contain;
+    filter:drop-shadow(0 12px 25px rgba(0,0,0,.6));pointer-events:none;
+  }
+  .monster-wrap.hit{animation:shake .25s;}
+  .monster-wrap.hit #monster{filter:drop-shadow(0 12px 25px rgba(0,0,0,.6)) brightness(2.2) sepia(1) saturate(6) hue-rotate(-20deg);}
+  @keyframes shake{
+    0%{transform:translate(0,0) rotate(0)}
+    20%{transform:translate(-12px,4px) rotate(-5deg)}
+    40%{transform:translate(10px,-4px) rotate(5deg)}
+    60%{transform:translate(-8px,2px) rotate(-3deg)}
+    80%{transform:translate(6px,-2px) rotate(3deg)}
+    100%{transform:translate(0,0) rotate(0)}
+  }
+  .hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;
+    font-size:12px;color:rgba(255,255,255,.45);z-index:3;}
+
+  /* Whip line */
+  .whip{position:fixed;height:5px;transform-origin:left center;z-index:8;pointer-events:none;
+    background:linear-gradient(90deg,#fff,var(--gold),var(--accent));
+    border-radius:5px;box-shadow:0 0 14px var(--gold);animation:whipFade .22s forwards;}
+  @keyframes whipFade{0%{opacity:1;filter:brightness(2)}100%{opacity:0;filter:brightness(1)}}
+
+  /* Impact */
+  .impact{position:fixed;z-index:9;pointer-events:none;font-family:'Bungee';
+    font-size:40px;color:var(--gold);text-shadow:0 0 12px var(--accent),2px 2px 0 #000;
+    transform:translate(-50%,-50%) scale(.4);animation:pop .5s forwards;}
+  @keyframes pop{0%{transform:translate(-50%,-50%) scale(.4) rotate(-15deg);opacity:1}
+    100%{transform:translate(-50%,-50%) scale(1.6) rotate(15deg);opacity:0}}
+
+  /* Bubble */
+  .bubble{position:fixed;z-index:10;pointer-events:none;max-width:200px;
+    background:#fff;color:#1a0b2e;font-weight:700;font-size:15px;
+    padding:10px 14px;border-radius:16px;box-shadow:0 6px 0 rgba(0,0,0,.3);
+    transform:translate(-50%,-100%) scale(.5);animation:bub 1.4s forwards;}
+  .bubble::after{content:"";position:absolute;bottom:-9px;left:30px;
+    border:10px solid transparent;border-top-color:#fff;}
+  @keyframes bub{0%{opacity:0;transform:translate(-50%,-80%) scale(.5)}
+    15%{opacity:1;transform:translate(-50%,-110%) scale(1)}
+    75%{opacity:1;transform:translate(-50%,-130%) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-160%) scale(.9)}}
+
+  /* particles */
+  .spark{position:fixed;z-index:8;width:8px;height:8px;border-radius:50%;
+    background:var(--accent2);pointer-events:none;}
+</style>
+</head>
+<body>
+  <div class="hud">
+    <div class="title">⚡ PECUT MONSTER ⚡</div>
+    <div class="counter">🔥 <span id="count">0</span></div>
+    <div class="controls">
+      <label class="btn" for="imgInput">📷 Ganti Gambar Monster</label>
+      <input type="file" id="imgInput" accept="image/*">
+      <button class="btn reset" id="resetBtn">↺ Reset</button>
+    </div>
+  </div>
+
+  <div class="arena" id="arena">
+    <div class="monster-wrap" id="monsterWrap">
+      <img id="monster" alt="monster"
+        src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='100' cy='110' r='75' fill='%237b2ff7'/><circle cx='75' cy='95' r='18' fill='white'/><circle cx='125' cy='95' r='18' fill='white'/><circle cx='75' cy='98' r='9' fill='black'/><circle cx='125' cy='98' r='9' fill='black'/><path d='M65 140 Q100 165 135 140' stroke='black' stroke-width='6' fill='none' stroke-linecap='round'/><polygon points='60,40 75,75 45,72' fill='%237b2ff7'/><polygon points='140,40 125,75 155,72' fill='%237b2ff7'/><path d='M80 150 l8 10 l8 -10 l8 10 l8 -10' stroke='white' stroke-width='3' fill='none'/></svg>">
+    </div>
+    <div class="hint">Tap / klik monster untuk memecut! 🐍💥</div>
+  </div>
+
+<script>
+const arena = document.getElementById('arena');
+const wrap = document.getElementById('monsterWrap');
+const monster = document.getElementById('monster');
+const countEl = document.getElementById('count');
+let count = 0;
+
+const phrases = [
+  "ADUH SAKIT!!","Ampun bos! 😭","Jangan dong!","Kok aku terus?!",
+  "Hentikan! 🥵","Hadeh...","Tega banget!","Aaargh!","Pls stop!",
+  "Aku kapok! 😵","Mama... 😢","Itu sakit tau!","Ya ampun!",
+  "Cukup cukup!","Sumpah perih!","Knapa aku 😩","Auk ah gelap!",
+  "Yaelah serius?","Bjir sakit!","Tobat aku tobat! 🙏"
+];
+
+function rand(a,b){return Math.random()*(b-a)+a;}
+
+function whipAt(x,y){
+  // origin: top-left corner of screen
+  const ox = rand(0,80), oy = 0;
+  const dx = x-ox, dy = y-oy;
+  const len = Math.hypot(dx,dy);
+  const ang = Math.atan2(dy,dx)*180/Math.PI;
+  const whip = document.createElement('div');
+  whip.className='whip';
+  whip.style.left=ox+'px';
+  whip.style.top=oy+'px';
+  whip.style.width=len+'px';
+  whip.style.transform=`rotate(${ang}deg)`;
+  document.body.appendChild(whip);
+  setTimeout(()=>whip.remove(),230);
+}
+
+function impactAt(x,y){
+  const el=document.createElement('div');
+  el.className='impact';
+  el.textContent=['POW!','WHACK!','BAM!','PETOK!','JEDAR!'][Math.floor(rand(0,5))];
+  el.style.left=x+'px';el.style.top=y+'px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),500);
+  for(let i=0;i<8;i++){
+    const s=document.createElement('div');
+    s.className='spark';
+    s.style.left=x+'px';s.style.top=y+'px';
+    s.style.background=['#ff2e63','#08d9d6','#ffd93d'][i%3];
+    document.body.appendChild(s);
+    const a=rand(0,Math.PI*2),d=rand(40,90);
+    s.animate([{transform:'translate(0,0)',opacity:1},
+      {transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px)`,opacity:0}],
+      {duration:450,easing:'ease-out'});
+    setTimeout(()=>s.remove(),460);
+  }
+}
+
+function bubbleAt(x,y){
+  const b=document.createElement('div');
+  b.className='bubble';
+  b.textContent=phrases[Math.floor(rand(0,phrases.length))];
+  b.style.left=Math.min(Math.max(x,80),window.innerWidth-80)+'px';
+  b.style.top=y+'px';
+  document.body.appendChild(b);
+  setTimeout(()=>b.remove(),1400);
+}
+
+function hit(x,y){
+  count++;countEl.textContent=count;
+  whipAt(x,y);
+  impactAt(x,y);
+  const r=monster.getBoundingClientRect();
+  bubbleAt(r.left+r.width/2,r.top+r.height*0.25);
+  wrap.classList.remove('hit');void wrap.offsetWidth;wrap.classList.add('hit');
+}
+
+arena.addEventListener('click',e=>hit(e.clientX,e.clientY));
+arena.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches) hit(t.clientX,t.clientY);
+},{passive:false});
+
+document.getElementById('imgInput').addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  const reader=new FileReader();
+  reader.onload=ev=>monster.src=ev.target.result;
+  reader.readAsDataURL(f);
+});
+
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  count=0;countEl.textContent=0;
+});
+</script>
+</body>
+</html>
